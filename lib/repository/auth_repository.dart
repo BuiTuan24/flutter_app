@@ -6,17 +6,25 @@ class AuthRepository {
 
   AuthRepository({required this.baseUrl});
 
-  Future<void> login(String email, String password) async {
+  Future<int> login(String email, String password) async {
     final url = Uri.parse('$baseUrl/api/auth/login');
+
     final res = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password': password}),
+      body: jsonEncode({
+        'email': email,
+        'password': password,
+      }),
     );
 
     if (res.statusCode != 200 && res.statusCode != 201) {
-      throw Exception(jsonDecode(res.body)['message'] ?? 'Register failed');
-}
+      throw Exception('Login failed');
+    }
+
+    final data = jsonDecode(res.body);
+
+    return data['id']; // backend phải trả id
   }
 
   Future<void> register({

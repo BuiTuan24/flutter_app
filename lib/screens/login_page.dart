@@ -4,6 +4,7 @@ import 'package:flutter_application_1/Bloc_auth/auth_event.dart';
 import 'package:flutter_application_1/Bloc_auth/auth_state.dart';
 import 'package:flutter_application_1/screens/detail_screen.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginPage extends StatelessWidget {
   final TextEditingController emailController = TextEditingController();
@@ -19,21 +20,26 @@ class LoginPage extends StatelessWidget {
       body: Padding(
         padding: const EdgeInsets.all(20.0),
         child: BlocListener<AuthBloc, AuthState>(
-          listener: (context, state) {
-            if (state is AuthSuccess) {
-              // Login thành công → chuyển sang DetailScreen
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => DetailScreen()),
-                (route) => false,
-              );
-            } else if (state is AuthError) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(state.message)),
-              );
-            }
-          },
-          child: Column(
+            listener: (context, state) async {
+
+              if (state is AuthSuccess) {
+                final prefs = await SharedPreferences.getInstance();
+
+                prefs.setInt("userId", state.userId);
+
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => DetailScreen()),
+                      (route) => false,
+                );
+
+              } else if (state is AuthError) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(state.message)),
+                );
+              }
+            },
+              child: Column(
             children: [
               SizedBox(height: 20),
 
