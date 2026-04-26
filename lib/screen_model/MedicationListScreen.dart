@@ -4,13 +4,57 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MedicationListScreen extends StatefulWidget {
+  final DateTime selectedDate;
+  final Map<String, List<String>> completedLogs;
+  final Function(String date, String time) onDone;
+  final Function(double) onProgressChanged;
+
+  const MedicationListScreen({
+    super.key,
+    required this.selectedDate,
+    required this.completedLogs,
+    required this.onDone,
+    required this.onProgressChanged,
+  });
+
   @override
-  _MedicationListScreenState createState() => _MedicationListScreenState();
+  _MedicationListScreenState createState() =>
+      _MedicationListScreenState();
 }
 
 class _MedicationListScreenState extends State<MedicationListScreen> {
   List medications = [];
   bool isLoading = true;
+
+  // 🔥 helper xử lý times
+  List<String> parseTimes(dynamic times) {
+    if (times is List) return List<String>.from(times);
+    return times.toString().split(',');
+  }
+
+  void calculateProgress() {
+    String dateKey =
+        "${widget.selectedDate.year}-${widget.selectedDate.month}-${widget.selectedDate.day}";
+
+    int total = 0;
+    int done = 0;
+
+    for (var item in medications) {
+      List<String> times = parseTimes(item['times']);
+
+      total += times.length;
+
+      for (var t in times) {
+        if (widget.completedLogs[dateKey]?.contains(t) ?? false) {
+          done++;
+        }
+      }
+    }
+
+    double progress = total == 0 ? 0.0 : done / total;
+
+    widget.onProgressChanged(progress);
+  }
 
   @override
   void initState() {
@@ -37,6 +81,8 @@ class _MedicationListScreenState extends State<MedicationListScreen> {
           medications = jsonDecode(res.body);
           isLoading = false;
         });
+
+        calculateProgress(); // 🔥 gọi sau setState
       } else {
         setState(() => isLoading = false);
       }
@@ -63,14 +109,132 @@ class _MedicationListScreenState extends State<MedicationListScreen> {
     fetchMedications();
   }
 
+  @override
+  Widget build(BuildContext context) {
+    String dateKey =
+        "${widget.selectedDate.year}-${widget.selectedDate.month}-${widget.selectedDate.day}";
+
+    return Scaffold(
+      appBar: AppBar(title: const Text("Danh sách thuốc")),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : medications.isEmpty
+          ? const Center(child: Text("Chưa có thuốc nào"))
+          : Builder(
+        builder: (context) {
+          // 🔥 FILTER PHẢI Ở NGOÀI
+          var filtered = medications.where((item) {
+            List<String> times = parseTimes(item['times']);
+            String time = times[0];
+
+            return !(widget.completedLogs[dateKey]?.contains(time) ?? false);
+          }).toList();
+
+          // 🔥 nếu hết thuốc
+          if (filtered.isEmpty) {
+            return const Center(
+              child: Text("Hôm nay đã uống hết thuốc 🎉"),
+            );
+          }
+
+          return ListView.builder(
+            itemCount: filtered.length, // 🔥 QUAN TRỌNG
+            itemBuilder: (context, index) {
+              final item = filtered[index];
+
+              List<String> times = parseTimes(item['times']);
+              String time = times[0];
+
+              bool isDone =
+                  widget.completedLogs[dateKey]?.contains(time) ?? false;
+
+              return Card(
+                margin: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 6),
+                child: ListTile(
+                  title: Text(
+                    item['name'] ?? '',
+                    style: TextStyle(
+                      decoration:
+                      isDone ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Liều: ${item['dosage']}"),
+                      Text("Giờ: ${times.join(', ')}"),
+                    ],
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // ✔ HOÀN THÀNH
+                      IconButton(
+                        icon: Icon(
+                          Icons.check_circle,
+                          color: isDone ? Colors.green : Colors.grey,
+                        ),
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: const Text("Xác nhận"),
+                              content: const Text("Bạn đã uống thuốc này chưa?"),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text("Hủy"),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+
+                                    widget.onDone(dateKey, time);
+
+                                    Future.delayed(
+                                        const Duration(milliseconds: 50), () {
+                                      calculateProgress();
+                                    });
+                                  },
+                                  child: const Text("Xong"),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+
+                      // ✏️ SỬA
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.blue),
+                        onPressed: () => showEditDialog(item),
+                      ),
+
+                      // 🗑️ XÓA
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () => deleteMedication(item['id']),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
   void showEditDialog(dynamic item) {
     final nameController = TextEditingController(text: item['name']);
-    final dosageController = TextEditingController(text: item['dosage']);
-    final noteController = TextEditingController(text: item['note'] ?? '');
-    List<String> times =
-    (item['times'] is List)
-        ? List<String>.from(item['times'])
-        : (item['times'] ?? '').toString().split(',');
+    final dosageController =
+    TextEditingController(text: item['dosage']);
+    final noteController =
+    TextEditingController(text: item['note'] ?? '');
+
+    List<String> times = parseTimes(item['times']);
 
     showDialog(
       context: context,
@@ -78,32 +242,35 @@ class _MedicationListScreenState extends State<MedicationListScreen> {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              title: Text("Sửa thuốc"),
+              title: const Text("Sửa thuốc"),
               content: SingleChildScrollView(
                 child: Column(
                   children: [
                     TextField(
                       controller: nameController,
-                      decoration: InputDecoration(labelText: "Tên thuốc"),
+                      decoration:
+                      const InputDecoration(labelText: "Tên thuốc"),
                     ),
                     TextField(
                       controller: dosageController,
-                      decoration: InputDecoration(labelText: "Liều lượng"),
+                      decoration: const InputDecoration(
+                          labelText: "Liều lượng"),
                     ),
                     TextField(
                       controller: noteController,
-                      decoration: InputDecoration(labelText: "Ghi chú"),
+                      decoration:
+                      const InputDecoration(labelText: "Ghi chú"),
                     ),
-
-                    SizedBox(height: 10),
-
+                    const SizedBox(height: 10),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
                       children: [
-                        Text("Giờ uống"),
+                        const Text("Giờ uống"),
                         ElevatedButton(
                           onPressed: () async {
-                            TimeOfDay? picked = await showTimePicker(
+                            TimeOfDay? picked =
+                            await showTimePicker(
                               context: context,
                               initialTime: TimeOfDay.now(),
                             );
@@ -117,17 +284,16 @@ class _MedicationListScreenState extends State<MedicationListScreen> {
                               });
                             }
                           },
-                          child: Text("+"),
+                          child: const Text("+"),
                         )
                       ],
                     ),
-
                     Wrap(
                       spacing: 8,
                       children: times.map((t) {
                         return Chip(
                           label: Text(t),
-                          deleteIcon: Icon(Icons.close),
+                          deleteIcon: const Icon(Icons.close),
                           onDeleted: () {
                             setStateDialog(() {
                               times.remove(t);
@@ -142,7 +308,7 @@ class _MedicationListScreenState extends State<MedicationListScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text("Hủy"),
+                  child: const Text("Hủy"),
                 ),
                 ElevatedButton(
                   onPressed: () async {
@@ -157,59 +323,13 @@ class _MedicationListScreenState extends State<MedicationListScreen> {
 
                     Navigator.pop(context);
                   },
-                  child: Text("Lưu"),
+                  child: const Text("Lưu"),
                 ),
               ],
             );
           },
         );
       },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text("Danh sách thuốc")),
-      body: isLoading
-          ? Center(child: CircularProgressIndicator())
-          : medications.isEmpty
-          ? Center(child: Text("Chưa có thuốc nào"))
-          : ListView.builder(
-        itemCount: medications.length,
-        itemBuilder: (context, index) {
-          final item = medications[index];
-
-          return Card(
-            margin:
-            EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: ListTile(
-              title: Text(item['name'] ?? ''),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text("Liều: ${item['dosage']}"),
-                  Text("Giờ: ${item['times']}"),
-                ],
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.edit, color: Colors.blue),
-                    onPressed: () => showEditDialog(item),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.delete, color: Colors.red),
-                    onPressed: () =>
-                        deleteMedication(item['id']),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
     );
   }
 }

@@ -52,7 +52,11 @@ class ScheduleScreen extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => MedicationListScreen(),
+                    builder: (context) => MedicationListScreen(
+                      selectedDate: DateTime.now(),
+                      completedLogs: {},
+                      onDone: (date, time) {}, onProgressChanged: (double p1) {  },
+                    ),
                   ),
                 );
               },
