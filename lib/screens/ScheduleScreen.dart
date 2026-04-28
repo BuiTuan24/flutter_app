@@ -54,8 +54,9 @@ class ScheduleScreen extends StatelessWidget {
                   MaterialPageRoute(
                     builder: (context) => MedicationListScreen(
                       selectedDate: DateTime.now(),
-                      completedLogs: {},
-                      onDone: (date, time) {}, onProgressChanged: (double p1) {  },
+                      onProgressChanged: (p) {
+                        print("Progress: $p");
+                      },
                     ),
                   ),
                 );

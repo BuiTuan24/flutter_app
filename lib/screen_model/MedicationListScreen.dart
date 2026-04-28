@@ -1,335 +1,344 @@
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'DosageScreen.dart';
+
 class MedicationListScreen extends StatefulWidget {
   final DateTime selectedDate;
-  final Map<String, List<String>> completedLogs;
-  final Function(String date, String time) onDone;
   final Function(double) onProgressChanged;
-
+  int getToday() {
+    return DateTime.now().weekday;
+    // ⚠️ Dart: 1 = Monday, 7 = Sunday
+  }
   const MedicationListScreen({
     super.key,
     required this.selectedDate,
-    required this.completedLogs,
-    required this.onDone,
     required this.onProgressChanged,
   });
 
   @override
-  _MedicationListScreenState createState() =>
-      _MedicationListScreenState();
+  State<MedicationListScreen> createState() => _MedicationListScreenState();
 }
 
 class _MedicationListScreenState extends State<MedicationListScreen> {
   List medications = [];
+  Map<String, List<String>> completedLogs = {};
   bool isLoading = true;
+  int? userId;
 
-  // 🔥 helper xử lý times
+  String get dateKey =>
+      "${widget.selectedDate.year}-${widget.selectedDate.month}-${widget.selectedDate.day}";
+
+  // 🔥 parse times
   List<String> parseTimes(dynamic times) {
     if (times is List) return List<String>.from(times);
-    return times.toString().split(',');
+    return times.toString().replaceAll('[', '').replaceAll(']', '').split(',');
   }
 
-  void calculateProgress() {
-    String dateKey =
-        "${widget.selectedDate.year}-${widget.selectedDate.month}-${widget.selectedDate.day}";
+  bool shouldShowMedication(dynamic med) {
+    DateTime selected = widget.selectedDate;
 
-    int total = 0;
-    int done = 0;
+    // 🔥 parse start / end
+    DateTime? start =
+    med['startDate'] != null ? DateTime.parse(med['startDate']) : null;
 
-    for (var item in medications) {
-      List<String> times = parseTimes(item['times']);
+    DateTime? end =
+    med['endDate'] != null ? DateTime.parse(med['endDate']) : null;
 
-      total += times.length;
+    // ❌ ngoài khoảng ngày
+    if (start != null && selected.isBefore(start)) return false;
+    if (end != null && selected.isAfter(end)) return false;
 
-      for (var t in times) {
-        if (widget.completedLogs[dateKey]?.contains(t) ?? false) {
-          done++;
-        }
-      }
+    String type = med['scheduleType'] ?? "WEEKLY";
+
+    // 🟢 1. Theo thứ
+    if (type == "WEEKLY") {
+      if (med['weekdays'] == null) return true;
+
+      List days = med['weekdays'] is String
+          ? jsonDecode(med['weekdays'])
+          : med['weekdays'];
+
+      List<String> map = ["CN","T2","T3","T4","T5","T6","T7"];
+
+      int today = selected.weekday; // 1-7 (Mon-Sun)
+      return days.contains(today);
     }
 
-    double progress = total == 0 ? 0.0 : done / total;
+    // 🟡 2. Khi cần
+    if (type == "AS_NEEDED") {
+      return true;
+    }
 
-    widget.onProgressChanged(progress);
+    // 🔵 3. Cách ngày
+    if (type == "ALTERNATE") {
+      if (start == null) return true;
+
+      int diff = selected.difference(start).inDays;
+      return diff % 2 == 0;
+    }
+
+    return true;
+  }
+
+  Widget buildSection(String title, List items, bool isDoneSection) {
+    if (items.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          isDoneSection ? "" : "Hôm nay đã uống hết 🎉",
+          style: const TextStyle(fontSize: 16),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        ...items.map((e) => buildItem(e, isDoneSection)).toList(),
+      ],
+    );
+  }
+
+  Widget buildItem(Map e, bool isDone) {
+    final med = e["med"];
+    final time = e["time"];
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      elevation: 3,
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: isDone ? Colors.green : Colors.blue,
+          child: Icon(
+            isDone ? Icons.check : Icons.access_time,
+            color: Colors.white,
+          ),
+        ),
+        title: Text(
+          med['name'],
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            decoration:
+            isDone ? TextDecoration.lineThrough : null,
+          ),
+        ),
+        subtitle: Text("Liều: ${med['dosage']} • $time"),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+
+            // ✅ DONE / UNDO
+            IconButton(
+              icon: Icon(
+                isDone ? Icons.undo : Icons.check_circle,
+                color: isDone ? Colors.orange : Colors.green,
+              ),
+              onPressed: () {
+                toggleDone(med['id'], time);
+              },
+            ),
+
+            // ✏️ EDIT → chuyển sang DosageScreen
+            IconButton(
+              icon: const Icon(Icons.edit, color: Colors.blue),
+              onPressed: () {
+                print("MED: $med"); // 👈 thêm dòng này
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => DosageScreen(existingMed: med),
+                  ),
+                ).then((_) {
+                  fetchMedications();
+                  loadLogs();
+                });
+              },
+            ),
+
+            // 🗑️ DELETE
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              onPressed: () async {
+                await deleteMedication(med['id']);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   void initState() {
     super.initState();
-    fetchMedications();
+    initData();
   }
 
-  Future<void> fetchMedications() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final userId = prefs.getInt("userId");
+  @override
+  void didUpdateWidget(covariant MedicationListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
 
-      if (userId == null) {
-        setState(() => isLoading = false);
-        return;
-      }
-
-      final res = await http.get(
-        Uri.parse("http://10.0.2.2:8080/medications?userId=$userId"),
-      );
-
-      if (res.statusCode == 200) {
-        setState(() {
-          medications = jsonDecode(res.body);
-          isLoading = false;
-        });
-
-        calculateProgress(); // 🔥 gọi sau setState
-      } else {
-        setState(() => isLoading = false);
-      }
-    } catch (e) {
-      setState(() => isLoading = false);
+    if (oldWidget.selectedDate != widget.selectedDate) {
+      loadLogs(); // 🔥 đổi ngày → load lại logs
     }
   }
+
 
   Future<void> deleteMedication(int id) async {
     await http.delete(
       Uri.parse("http://10.0.2.2:8080/medications/$id"),
     );
 
-    fetchMedications();
+    await fetchMedications(); // reload list
+    await loadLogs(); // update progress luôn
   }
 
-  Future<void> updateMedication(int id, Map data) async {
-    await http.put(
-      Uri.parse("http://10.0.2.2:8080/medications/$id"),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode(data),
+  Future<void> initData() async {
+    final prefs = await SharedPreferences.getInstance();
+    userId = prefs.getInt("userId");
+
+    await fetchMedications();
+    await loadLogs();
+  }
+
+  Future<void> fetchMedications() async {
+    final res = await http.get(
+      Uri.parse("http://10.0.2.2:8080/medications?userId=$userId"),
     );
 
-    fetchMedications();
+    if (res.statusCode == 200) {
+      medications = jsonDecode(res.body);
+    }
+
+    setState(() => isLoading = false);
+  }
+
+  Future<void> loadLogs() async {
+    final res = await http.get(
+      Uri.parse(
+          "http://10.0.2.2:8080/logs?userId=$userId&date=$dateKey"),
+    );
+
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body);
+
+      completedLogs[dateKey] = [];
+
+      for (var log in data) {
+        if (log['done'] == true || log['isDone'] == true) {
+          completedLogs[dateKey]!.add(log['time']);
+        }
+      }
+    }
+
+    calculateProgress();
+    setState(() {});
+  }
+
+  void calculateProgress() {
+    int total = 0;
+    int done = 0;
+
+    for (var med in medications) {
+
+      List<String> times = parseTimes(med['times']);
+
+      for (var t in times) {
+        total++;
+        if (completedLogs[dateKey]?.contains(t.trim()) ?? false) {
+          done++;
+        }
+      }
+    }
+
+    double progress = total == 0 ? 0 : done / total;
+    widget.onProgressChanged(progress);
+  }
+
+  Future<void> toggleDone(int medId, String time) async {
+    // 🔥 update UI ngay
+    completedLogs.putIfAbsent(dateKey, () => []);
+
+    if (completedLogs[dateKey]!.contains(time)) {
+      completedLogs[dateKey]!.remove(time);
+    } else {
+      completedLogs[dateKey]!.add(time);
+    }
+
+    calculateProgress();
+    setState(() {});
+
+    // 🔥 call API
+    await http.post(
+      Uri.parse("http://10.0.2.2:8080/logs"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "medicationId": medId,
+        "userId": userId,
+        "date": dateKey,
+        "time": time,
+        "done": completedLogs[dateKey]!.contains(time),
+      }),
+    );
+    await loadLogs();
   }
 
   @override
   Widget build(BuildContext context) {
-    String dateKey =
-        "${widget.selectedDate.year}-${widget.selectedDate.month}-${widget.selectedDate.day}";
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text("Danh sách thuốc")),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : medications.isEmpty
-          ? const Center(child: Text("Chưa có thuốc nào"))
-          : Builder(
-        builder: (context) {
-          // 🔥 FILTER PHẢI Ở NGOÀI
-          var filtered = medications.where((item) {
-            List<String> times = parseTimes(item['times']);
-            String time = times[0];
+    if (medications.isEmpty) {
+      return const Center(child: Text("Chưa có thuốc nào"));
+    }
 
-            return !(widget.completedLogs[dateKey]?.contains(time) ?? false);
-          }).toList();
+    List pending = [];
+    List done = [];
 
-          // 🔥 nếu hết thuốc
-          if (filtered.isEmpty) {
-            return const Center(
-              child: Text("Hôm nay đã uống hết thuốc 🎉"),
-            );
-          }
+    for (var med in medications) {
+      if (!shouldShowMedication(med)) continue;
+      List<String> times = parseTimes(med['times']);
 
-          return ListView.builder(
-            itemCount: filtered.length, // 🔥 QUAN TRỌNG
-            itemBuilder: (context, index) {
-              final item = filtered[index];
+      for (var t in times) {
+        bool isDone =
+            completedLogs[dateKey]?.contains(t.trim()) ?? false;
 
-              List<String> times = parseTimes(item['times']);
-              String time = times[0];
+        var item = {
+          "med": med,
+          "time": t.trim(),
+        };
 
-              bool isDone =
-                  widget.completedLogs[dateKey]?.contains(time) ?? false;
+        if (isDone) {
+          done.add(item);
+        } else {
+          pending.add(item);
+        }
+      }
+    }
 
-              return Card(
-                margin: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 6),
-                child: ListTile(
-                  title: Text(
-                    item['name'] ?? '',
-                    style: TextStyle(
-                      decoration:
-                      isDone ? TextDecoration.lineThrough : null,
-                    ),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Liều: ${item['dosage']}"),
-                      Text("Giờ: ${times.join(', ')}"),
-                    ],
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // ✔ HOÀN THÀNH
-                      IconButton(
-                        icon: Icon(
-                          Icons.check_circle,
-                          color: isDone ? Colors.green : Colors.grey,
-                        ),
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder: (_) => AlertDialog(
-                              title: const Text("Xác nhận"),
-                              content: const Text("Bạn đã uống thuốc này chưa?"),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text("Hủy"),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-
-                                    widget.onDone(dateKey, time);
-
-                                    Future.delayed(
-                                        const Duration(milliseconds: 50), () {
-                                      calculateProgress();
-                                    });
-                                  },
-                                  child: const Text("Xong"),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-
-                      // ✏️ SỬA
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.blue),
-                        onPressed: () => showEditDialog(item),
-                      ),
-
-                      // 🗑️ XÓA
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => deleteMedication(item['id']),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  void showEditDialog(dynamic item) {
-    final nameController = TextEditingController(text: item['name']);
-    final dosageController =
-    TextEditingController(text: item['dosage']);
-    final noteController =
-    TextEditingController(text: item['note'] ?? '');
-
-    List<String> times = parseTimes(item['times']);
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setStateDialog) {
-            return AlertDialog(
-              title: const Text("Sửa thuốc"),
-              content: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: nameController,
-                      decoration:
-                      const InputDecoration(labelText: "Tên thuốc"),
-                    ),
-                    TextField(
-                      controller: dosageController,
-                      decoration: const InputDecoration(
-                          labelText: "Liều lượng"),
-                    ),
-                    TextField(
-                      controller: noteController,
-                      decoration:
-                      const InputDecoration(labelText: "Ghi chú"),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text("Giờ uống"),
-                        ElevatedButton(
-                          onPressed: () async {
-                            TimeOfDay? picked =
-                            await showTimePicker(
-                              context: context,
-                              initialTime: TimeOfDay.now(),
-                            );
-
-                            if (picked != null) {
-                              final time =
-                                  "${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}";
-
-                              setStateDialog(() {
-                                times.add(time);
-                              });
-                            }
-                          },
-                          child: const Text("+"),
-                        )
-                      ],
-                    ),
-                    Wrap(
-                      spacing: 8,
-                      children: times.map((t) {
-                        return Chip(
-                          label: Text(t),
-                          deleteIcon: const Icon(Icons.close),
-                          onDeleted: () {
-                            setStateDialog(() {
-                              times.remove(t);
-                            });
-                          },
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("Hủy"),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    await updateMedication(item['id'], {
-                      "name": nameController.text,
-                      "dosage": dosageController.text,
-                      "note": noteController.text,
-                      "frequency": item['frequency'],
-                      "times": times,
-                      "userId": item['userId'],
-                    });
-
-                    Navigator.pop(context);
-                  },
-                  child: const Text("Lưu"),
-                ),
-              ],
-            );
-          },
-        );
-      },
+    return ListView(
+      children: [
+        buildSection("💊 Chưa uống", pending, false),
+        buildSection("✅ Đã uống", done, true),
+      ],
     );
   }
 }

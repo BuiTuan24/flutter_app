@@ -5,8 +5,12 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DosageScreen extends StatefulWidget {
+  final dynamic existingMed;
+
+  const DosageScreen({super.key, this.existingMed});
+
   @override
-  _DosageScreenState createState() => _DosageScreenState();
+  State<DosageScreen> createState() => _DosageScreenState();
 }
 
 class _DosageScreenState extends State<DosageScreen> {
@@ -15,7 +19,69 @@ class _DosageScreenState extends State<DosageScreen> {
   final TextEditingController noteController = TextEditingController();
 
   List<TimeOfDay> times = [];
-  String frequency = "daily";
+
+  // 🔥 NEW
+  String scheduleType = "WEEKLY";
+  List<String> selectedDays = [];
+  DateTime? startDate;
+  DateTime? endDate;
+
+  final List<String> allDays = ["T2","T3","T4","T5","T6","T7","CN"];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.existingMed != null) {
+      loadExisting();
+    }
+  }
+
+
+  void loadExisting() {
+    final med = widget.existingMed;
+
+    nameController.text = med['name'] ?? "";
+    dosageController.text = med['dosage'] ?? "";
+    noteController.text = med['note'] ?? "";
+
+    scheduleType = med['scheduleType'] ?? "WEEKLY";
+
+    // weekdays
+    if (med['weekdays'] != null) {
+      if (med['weekdays'] is String) {
+        selectedDays = convertDaysBack(jsonDecode(med['weekdays']));
+      } else {
+        selectedDays = convertDaysBack(med['weekdays']);
+      }
+    }
+
+    // times
+    if (med['times'] != null) {
+      List<String> t;
+
+      if (med['times'] is String) {
+        t = List<String>.from(jsonDecode(med['times']));
+      } else {
+        t = List<String>.from(med['times']);
+      }
+
+      times = t.map((e) {
+        final parts = e.split(":");
+        return TimeOfDay(
+          hour: int.parse(parts[0]),
+          minute: int.parse(parts[1]),
+        );
+      }).toList();
+    }
+
+    // dates
+    if (med['startDate'] != null) {
+      startDate = DateTime.parse(med['startDate']);
+    }
+    if (med['endDate'] != null) {
+      endDate = DateTime.parse(med['endDate']);
+    }
+  }
 
   void addTime() async {
     TimeOfDay? picked = await showTimePicker(
@@ -37,16 +103,46 @@ class _DosageScreenState extends State<DosageScreen> {
   }
 
   String formatTime(TimeOfDay t) {
-    return t.hour.toString().padLeft(2, '0') +
-        ":" +
-        t.minute.toString().padLeft(2, '0');
+    return "${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}";
   }
 
-  // 🔥 CHỈ SỬA HÀM NÀY
-  void save() async {
+  List<String> convertDaysBack(List<dynamic> days) {
+    const map = {
+      2: "T2",
+      3: "T3",
+      4: "T4",
+      5: "T5",
+      6: "T6",
+      7: "T7",
+      1: "CN",
+    };
+
+    return days.map((d) => map[d] ?? "").toList();
+  }
+  List<int> convertDays(List<String> days) {
+    const map = {
+      "T2": 2,
+      "T3": 3,
+      "T4": 4,
+      "T5": 5,
+      "T6": 6,
+      "T7": 7,
+      "CN": 1, // ⚠️ đổi nếu backend bạn dùng CN = 7
+    };
+
+    return days.map((d) => map[d]!).toList();
+  }
+  Future<void> save() async {
     if (nameController.text.isEmpty || times.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Nhập tên thuốc và ít nhất 1 giờ")),
+        const SnackBar(content: Text("Nhập tên thuốc và ít nhất 1 giờ")),
+      );
+      return;
+    }
+
+    if (scheduleType == "WEEKLY" && selectedDays.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Chọn ít nhất 1 ngày trong tuần")),
       );
       return;
     }
@@ -54,66 +150,59 @@ class _DosageScreenState extends State<DosageScreen> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     int? userId = prefs.getInt("userId");
 
-    if (userId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Chưa đăng nhập")),
-      );
-      return;
+    print("USER ID: $userId");
+
+    if (userId == null) return;
+
+    final data = {
+      "userId": userId,
+      "name": nameController.text,
+      "dosage": dosageController.text,
+      "times": times.map((t) => formatTime(t)).toList(),
+      "note": noteController.text,
+      "scheduleType": scheduleType,
+      "weekdays": convertDays(selectedDays),
+    };
+
+    if (startDate != null) {
+      data["startDate"] = startDate!.toIso8601String();
+    }
+    if (endDate != null) {
+      data["endDate"] = endDate!.toIso8601String();
     }
 
-    try {
-      final response = await http.post(
-        Uri.parse("http://10.0.2.2:8080/medications"),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: jsonEncode({
-          "userId": userId,
-          "name": nameController.text,
-          "dosage": dosageController.text,
-          "times": times.map((t) => formatTime(t)).toList(),
-          "frequency": frequency,
-          "note": noteController.text,
-        }),
-      );
+    final url = widget.existingMed == null
+        ? "http://10.0.2.2:8080/medications"
+        : "http://10.0.2.2:8080/medications/${widget.existingMed['id']}";
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Đã lưu")),
-        );
+    final res = widget.existingMed == null
+        ? await http.post(Uri.parse(url),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(data))
+        : await http.put(Uri.parse(url),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(data));
 
-        // reset form
-        setState(() {
-          nameController.clear();
-          dosageController.clear();
-          noteController.clear();
-          times.clear();
-          frequency = "daily";
-        });
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Lỗi khi lưu")),
-        );
-      }
-    } catch (e) {
+    print("STATUS: ${res.statusCode}");
+    print("BODY: ${res.body}");
+
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      Navigator.pop(context);
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Không kết nối được server")),
+        SnackBar(content: Text("Lỗi: ${res.body}")),
       );
     }
-  }
-
-  @override
-  void dispose() {
-    nameController.dispose();
-    dosageController.dispose();
-    noteController.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Thiết lập liều lượng")),
+      appBar: AppBar(
+        title: Text(widget.existingMed == null
+            ? "Thêm thuốc"
+            : "Chỉnh sửa thuốc"),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: SingleChildScrollView(
@@ -121,93 +210,166 @@ class _DosageScreenState extends State<DosageScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
 
-              // 🟢 Tên thuốc
+              // TÊN
               TextField(
                 controller: nameController,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: "Tên thuốc",
                   border: OutlineInputBorder(),
                 ),
               ),
-              SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-              // 🟢 Liều lượng
+              // LIỀU
               TextField(
                 controller: dosageController,
-                decoration: InputDecoration(
-                  labelText: "Liều lượng (vd: 1 viên)",
+                decoration: const InputDecoration(
+                  labelText: "Liều lượng",
                   border: OutlineInputBorder(),
                 ),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-              // 🟢 Thời điểm uống
+              // TIME
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text("Thời điểm uống",
+                  const Text("Giờ uống",
                       style: TextStyle(fontWeight: FontWeight.bold)),
                   ElevatedButton(
                     onPressed: addTime,
-                    child: Text("+ Thêm giờ"),
+                    child: const Text("+"),
                   )
                 ],
               ),
 
-              SizedBox(height: 8),
-
               Wrap(
                 spacing: 8,
-                children: List.generate(times.length, (index) {
+                children: List.generate(times.length, (i) {
                   return Chip(
-                    label: Text(formatTime(times[index])),
-                    deleteIcon: Icon(Icons.close),
-                    onDeleted: () => removeTime(index),
+                    label: Text(formatTime(times[i])),
+                    onDeleted: () => removeTime(i),
                   );
                 }),
               ),
 
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-              // 🟢 Tần suất
-              DropdownButtonFormField<String>(
-                value: frequency,
-                decoration: InputDecoration(
-                  labelText: "Tần suất",
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  DropdownMenuItem(value: "daily", child: Text("Mỗi ngày")),
-                  DropdownMenuItem(value: "alternate", child: Text("Cách ngày")),
-                  DropdownMenuItem(value: "weekly", child: Text("Mỗi tuần")),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    frequency = value!;
-                  });
-                },
+              // SCHEDULE TYPE
+              const Text("Lịch uống",
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+
+              RadioListTile(
+                title: const Text("Theo thứ"),
+                value: "WEEKLY",
+                groupValue: scheduleType,
+                onChanged: (v) => setState(() => scheduleType = v!),
+              ),
+              RadioListTile(
+                title: const Text("Khi cần"),
+                value: "AS_NEEDED",
+                groupValue: scheduleType,
+                onChanged: (v) => setState(() => scheduleType = v!),
+              ),
+              RadioListTile(
+                title: const Text("Cách ngày"),
+                value: "ALTERNATE",
+                groupValue: scheduleType,
+                onChanged: (v) => setState(() => scheduleType = v!),
               ),
 
-              SizedBox(height: 16),
+              // WEEKDAYS
+              if (scheduleType == "WEEKLY") ...[
+                Wrap(
+                  spacing: 8,
+                  children: allDays.map((day) {
+                    final selected = selectedDays.contains(day);
 
-              // 🟢 Ghi chú
+                    return ChoiceChip(
+                      label: Text(day),
+                      selected: selected,
+                      selectedColor: Colors.blue,
+                      onSelected: (val) {
+                        setState(() {
+                          if (val) {
+                            selectedDays.add(day);
+                          } else {
+                            selectedDays.remove(day);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+              ],
+
+              const SizedBox(height: 16),
+
+              // DATE RANGE
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+
+                        if (picked != null) {
+                          setState(() => startDate = picked);
+                        }
+                      },
+                      child: Text(startDate == null
+                          ? "Bắt đầu"
+                          : startDate.toString().split(" ")[0]),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+
+                        if (picked != null) {
+                          setState(() => endDate = picked);
+                        }
+                      },
+                      child: Text(endDate == null
+                          ? "Kết thúc"
+                          : endDate.toString().split(" ")[0]),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              // NOTE
               TextField(
                 controller: noteController,
                 maxLines: 3,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: "Ghi chú",
                   border: OutlineInputBorder(),
                 ),
               ),
 
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-              // 🟢 Nút lưu
+              // SAVE
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: save,
-                  child: Text("Lưu"),
+                  child: const Text("Lưu"),
                 ),
               ),
             ],

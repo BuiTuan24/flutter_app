@@ -13,7 +13,7 @@ class DetailScreen extends StatefulWidget {
 }
 
 class _DetailScreenState extends State<DetailScreen> {
-  double currentProgress = 0.0;
+  Map<String, double> progressMap = {};
   Key listKey = UniqueKey();
   int getTotalTimes(List medications) {
     int total = 0;
@@ -27,40 +27,19 @@ class _DetailScreenState extends State<DetailScreen> {
     return total;
   }
 
-  int getDoneTimes(String dateKey) {
-    return completedLogs[dateKey]?.length ?? 0;
-  }
-
-  double getProgress(String dateKey, List medications) {
-    int total = getTotalTimes(medications);
-    int done = getDoneTimes(dateKey);
-
-    if (total == 0) return 0.0;
-
-    return done / total;
-  }
 
   DateTime selectedDate = DateTime.now();
 
   void updateProgress(double value) {
+    String key =
+        "${selectedDate.year}-${selectedDate.month}-${selectedDate.day}";
+
     setState(() {
-      currentProgress = value;
+      progressMap[key] = value;
     });
   }
 
   int currentIndex = 0; // 0: nhắc nhở, 1: hồ sơ
-  Map<String, List<String>> completedLogs = {};
-  void markAsDone(String date, String time) {
-    setState(() {
-      completedLogs.putIfAbsent(date, () => []);
-
-      if (completedLogs[date]!.contains(time)) {
-        completedLogs[date]!.remove(time); // bỏ tick
-      } else {
-        completedLogs[date]!.add(time); // tick
-      }
-    });
-  }
 
   void pickDate() async {
     DateTime? picked = await showDatePicker(
@@ -113,18 +92,25 @@ class _DetailScreenState extends State<DetailScreen> {
         scrollDirection: Axis.horizontal,
         itemCount: 7,
         itemBuilder: (context, index) {
-          DateTime day = today.add(Duration(days: index));
 
+          DateTime day = today.add(Duration(days: index));
+          String key = "${day.year}-${day.month}-${day.day}";
+
+          double progress = progressMap[key] ?? 0.0;
           bool isSelected =
               day.day == selectedDate.day &&
                   day.month == selectedDate.month;
 
-          bool isToday = index == 0;
+          bool isToday =
+              day.day == DateTime.now().day &&
+                  day.month == DateTime.now().month &&
+                  day.year == DateTime.now().year;
 
           return GestureDetector(
             onTap: () {
               setState(() {
                 selectedDate = day;
+
               });
             },
             child: Container(
@@ -153,7 +139,7 @@ class _DetailScreenState extends State<DetailScreen> {
                         width: 55,
                         height: 55,
                         child: CircularProgressIndicator(
-                          value: currentProgress,
+                          value: progress,
                           strokeWidth: 4,
                           backgroundColor: Colors.grey.shade300,
                           valueColor:
@@ -204,7 +190,7 @@ class _DetailScreenState extends State<DetailScreen> {
                       context,
                       MaterialPageRoute(builder: (_) => DosageScreen()),
                     ).then((_) {
-                      setState((){
+                      setState(() {
                         listKey = UniqueKey();
                       }); // reload lại list
                     });
@@ -212,7 +198,6 @@ class _DetailScreenState extends State<DetailScreen> {
                 ),
 
                 const ListTile(title: Text("Quét mã")),
-                const ListTile(title: Text("Tùy chọn khác")),
               ],
             );
           },
@@ -226,7 +211,7 @@ class _DetailScreenState extends State<DetailScreen> {
     return Container(
       height: 60,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         boxShadow: [
           BoxShadow(color: Colors.black12, blurRadius: 5)
         ],
@@ -267,10 +252,9 @@ class _DetailScreenState extends State<DetailScreen> {
         const SizedBox(height: 10),
         Expanded(
           child: MedicationListScreen(
-            key: listKey,
+            key: ValueKey(selectedDate.toString()),
             selectedDate: selectedDate,
-            completedLogs: completedLogs,
-            onDone: markAsDone, onProgressChanged: (double p1) {  },
+            onProgressChanged: updateProgress,
           ),
         ),
       ],

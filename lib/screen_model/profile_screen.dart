@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/screen_model/theme_provider.dart';
 import 'package:flutter_application_1/screens/change_password.dart';
 import 'package:flutter_application_1/screens/support_page.dart';
 import 'package:flutter_application_1/screens/login_page.dart';
-
+import 'package:provider/provider.dart';
 class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -44,6 +45,15 @@ class ProfileScreen extends StatelessWidget {
               MaterialPageRoute(builder: (_) => LoginPage()),
                   (route) => false,
             );
+          },
+        ),
+
+        SwitchListTile(
+          title: const Text("Dark Mode"),
+          value: Provider.of<ThemeProvider>(context).isDark,
+          onChanged: (_) {
+            Provider.of<ThemeProvider>(context, listen: false)
+                .toggleTheme();
           },
         ),
       ],

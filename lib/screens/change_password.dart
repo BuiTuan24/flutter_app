@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ChangePasswordPage extends StatefulWidget {
   @override
@@ -9,6 +12,48 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   final oldPass = TextEditingController();
   final newPass = TextEditingController();
   final confirmPass = TextEditingController();
+
+  bool isLoading = false;
+
+  Future<void> changePassword() async {
+    setState(() => isLoading = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      int? userId = prefs.getInt("userId");
+
+      if (userId == null) {
+        throw Exception("Không tìm thấy user");
+      }
+
+      final res = await http.put(
+        Uri.parse("http://10.0.2.2:8080/api/auth/users/change-password/$userId"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "oldPassword": oldPass.text,
+          "newPassword": newPass.text,
+        }),
+      );
+
+      if (res.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Đổi mật khẩu thành công")),
+        );
+
+        Navigator.pop(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Lỗi: ${res.body}")),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Lỗi kết nối server")),
+      );
+    }
+
+    setState(() => isLoading = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +79,10 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
               obscureText: true,
             ),
             SizedBox(height: 20),
-            ElevatedButton(
+
+            isLoading
+                ? CircularProgressIndicator()
+                : ElevatedButton(
               onPressed: () {
                 if (oldPass.text.isEmpty ||
                     newPass.text.isEmpty ||
@@ -54,20 +102,17 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
 
                 if (newPass.text.length < 6) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Mật khẩu phải >= 6 ký tự")),
+                    SnackBar(
+                        content: Text("Mật khẩu phải >= 6 ký tự")),
                   );
                   return;
                 }
 
-                // tạm thời chưa gọi API
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("Đổi mật khẩu thành công (demo)")),
-                );
-
-                Navigator.pop(context);
+                // 🔥 CALL API
+                changePassword();
               },
               child: Text("Xác nhận"),
-            )     
+            )
           ],
         ),
       ),
