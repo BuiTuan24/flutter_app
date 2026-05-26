@@ -5,7 +5,7 @@ import 'package:flutter_application_1/Bloc_auth/auth_state.dart';
 import 'package:flutter_application_1/screens/detail_screen.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
+import 'package:flutter_application_1/screens/home_screen.dart';
 class LoginPage extends StatelessWidget {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passController = TextEditingController();
@@ -16,7 +16,18 @@ class LoginPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Đăng nhập")),
+      appBar: AppBar(
+        title: Text("Đăng nhập"),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => HomePage()),
+            );
+          },
+        ),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
         child: BlocListener<AuthBloc, AuthState>(
@@ -63,16 +74,6 @@ class LoginPage extends StatelessWidget {
                 ),
               ),
               SizedBox(height: 20),
-
-              // OTP (mẫu thôi)
-              TextField(
-                controller: otpController,
-                decoration: InputDecoration(
-                  labelText: "Nhập OTP (mẫu, không check)",
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              SizedBox(height: 30),
 
               // Button + Loading
               BlocBuilder<AuthBloc, AuthState>(

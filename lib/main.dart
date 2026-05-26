@@ -9,8 +9,12 @@ import 'screens/register_page.dart';
 import 'screens/detail_screen.dart';
 import 'Bloc_auth/auth_bloc.dart';
 import 'package:provider/provider.dart';
+import 'service/notification_service.dart';
+void main() async {
 
-void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await NotificationService.init();
   final authRepo = AuthRepository(baseUrl: 'http://10.0.2.2:8080');
 
   runApp(

@@ -4,6 +4,7 @@ import 'package:flutter_application_1/screen_model/MedicationListScreen.dart';
 import 'package:flutter_application_1/screen_model/profile_screen.dart';
 
 import '../screen_model/DosageScreen.dart';
+import '../screen_model/ai_screen.dart';
 
 class DetailScreen extends StatefulWidget {
   const DetailScreen({super.key});
@@ -181,23 +182,49 @@ class _DetailScreenState extends State<DetailScreen> {
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+
+                // 💊 Thêm thuốc
                 ListTile(
+                  leading: const Icon(Icons.medication),
                   title: const Text("Thêm thuốc"),
                   onTap: () {
-                    Navigator.pop(context); // đóng menu trước
+                    Navigator.pop(context);
 
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => DosageScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => DosageScreen(),
+                      ),
                     ).then((_) {
                       setState(() {
                         listKey = UniqueKey();
-                      }); // reload lại list
+                      });
                     });
                   },
                 ),
 
-                const ListTile(title: Text("Quét mã")),
+                // 🤖 AI tạo lịch thuốc
+                ListTile(
+                  leading: const Icon(Icons.smart_toy),
+                  title: const Text("AI tạo lịch thuốc"),
+                  subtitle: const Text("Nhờ AI hỗ trợ tạo lịch uống thuốc"),
+                  onTap: () async {
+                    Navigator.pop(context);
+
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AIChatScreen(),
+                      ),
+                    );
+
+                    if (result == true) {
+                      setState(() {
+                        listKey = UniqueKey();
+                      });
+                    }
+                  },
+                ),
               ],
             );
           },
@@ -206,7 +233,6 @@ class _DetailScreenState extends State<DetailScreen> {
       child: const Icon(Icons.add),
     );
   }
-
   Widget buildBottomBar() {
     return Container(
       height: 60,
@@ -252,7 +278,7 @@ class _DetailScreenState extends State<DetailScreen> {
         const SizedBox(height: 10),
         Expanded(
           child: MedicationListScreen(
-            key: ValueKey(selectedDate.toString()),
+            key: listKey,
             selectedDate: selectedDate,
             onProgressChanged: updateProgress,
           ),
@@ -268,7 +294,13 @@ class _DetailScreenState extends State<DetailScreen> {
       body: SafeArea(
         child: currentIndex == 0
             ? buildReminderTab()
-            : ProfileScreen(),
+            : ProfileScreen(
+            onReload: () {
+            setState(() {
+              listKey = UniqueKey();
+            });
+          },
+        ),
       ),
       bottomNavigationBar: buildBottomBar(),
     );

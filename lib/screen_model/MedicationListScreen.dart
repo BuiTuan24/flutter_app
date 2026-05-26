@@ -80,7 +80,6 @@ class _MedicationListScreenState extends State<MedicationListScreen> {
       int diff = selected.difference(start).inDays;
       return diff % 2 == 0;
     }
-
     return true;
   }
 
@@ -257,6 +256,7 @@ class _MedicationListScreenState extends State<MedicationListScreen> {
     int done = 0;
 
     for (var med in medications) {
+      if (!shouldShowMedication(med)) continue;
 
       List<String> times = parseTimes(med['times']);
 

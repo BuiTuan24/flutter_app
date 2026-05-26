@@ -5,6 +5,14 @@ import 'package:flutter_application_1/screens/support_page.dart';
 import 'package:flutter_application_1/screens/login_page.dart';
 import 'package:provider/provider.dart';
 class ProfileScreen extends StatelessWidget {
+
+  final VoidCallback onReload;
+
+  const ProfileScreen({
+    super.key,
+    required this.onReload,
+  });
+
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -30,11 +38,17 @@ class ProfileScreen extends StatelessWidget {
         ),
         ListTile(
           title: const Text("Trợ giúp & hỗ trợ"),
-          onTap: () {
-            Navigator.push(
+          onTap: () async {
+
+            final result = await Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => SupportPage()),
+              MaterialPageRoute(
+                builder: (_) => SupportPage(),
+              ),
             );
+            if (result == true) {
+              onReload();
+            }
           },
         ),
         ListTile(

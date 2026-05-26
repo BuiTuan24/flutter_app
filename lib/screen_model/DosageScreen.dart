@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../service/notification_service.dart';
+
 class DosageScreen extends StatefulWidget {
   final dynamic existingMed;
 
@@ -108,31 +110,32 @@ class _DosageScreenState extends State<DosageScreen> {
 
   List<String> convertDaysBack(List<dynamic> days) {
     const map = {
-      2: "T2",
-      3: "T3",
-      4: "T4",
-      5: "T5",
-      6: "T6",
-      7: "T7",
-      1: "CN",
+      1: "T2",
+      2: "T3",
+      3: "T4",
+      4: "T5",
+      5: "T6",
+      6: "T7",
+      7: "CN",
     };
 
     return days.map((d) => map[d] ?? "").toList();
   }
   List<int> convertDays(List<String> days) {
     const map = {
-      "T2": 2,
-      "T3": 3,
-      "T4": 4,
-      "T5": 5,
-      "T6": 6,
-      "T7": 7,
-      "CN": 1, // ⚠️ đổi nếu backend bạn dùng CN = 7
+      "T2": 1,
+      "T3": 2,
+      "T4": 3,
+      "T5": 4,
+      "T6": 5,
+      "T7": 6,
+      "CN": 7,
     };
 
     return days.map((d) => map[d]!).toList();
   }
   Future<void> save() async {
+
     if (nameController.text.isEmpty || times.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Nhập tên thuốc và ít nhất 1 giờ")),
@@ -187,6 +190,32 @@ class _DosageScreenState extends State<DosageScreen> {
     print("BODY: ${res.body}");
 
     if (res.statusCode == 200 || res.statusCode == 201) {
+      for (int i = 0; i < times.length; i++) {
+
+        try {
+
+          await NotificationService
+              .scheduleMedicineNotification(
+
+            id: DateTime.now()
+                .millisecondsSinceEpoch
+                .remainder(100000) + i,
+
+            medicineName:
+            nameController.text,
+
+            dosage:
+            dosageController.text,
+
+            time:
+            formatTime(times[i]),
+          );
+
+        } catch (e) {
+
+          print(e);
+        }
+      }
       Navigator.pop(context);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -224,7 +253,7 @@ class _DosageScreenState extends State<DosageScreen> {
               TextField(
                 controller: dosageController,
                 decoration: const InputDecoration(
-                  labelText: "Liều lượng",
+                  labelText: "Liều lượng ( số viên/ngày)",
                   border: OutlineInputBorder(),
                 ),
               ),
