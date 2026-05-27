@@ -5,24 +5,144 @@ class SupportPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Hỗ trợ"),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
       ),
-      body: ListView(
+
+      body: Stack(
         children: [
-          ListTile(
-            leading: const Icon(Icons.support_agent),
-            title: const Text("Chat với nhân viên"),
-            subtitle: const Text("Liên hệ nhân viên hỗ trợ"),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const SupportChatScreen(),
+
+          // 🌄 ẢNH NỀN
+          Positioned.fill(
+            child: Opacity(
+              opacity: isDark ? 1 : 0.18,
+              child: Image.asset(
+                "assets/images/image6.png",
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+
+          // 🌫 OVERLAY
+          Positioned.fill(
+            child: Container(
+              color: isDark
+                  ? Colors.black.withOpacity(0.45)
+                  : Colors.white.withOpacity(0.25),
+            ),
+          ),
+
+          // 📋 CONTENT
+          ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.white.withOpacity(0.08)
+                      : Colors.white.withOpacity(0.72),
+
+                  borderRadius: BorderRadius.circular(24),
+
+                  border: Border.all(
+                    color: isDark
+                        ? Colors.white.withOpacity(0.08)
+                        : Colors.white.withOpacity(0.5),
+                  ),
+
+                  boxShadow: [
+                    BoxShadow(
+                      blurRadius: 12,
+                      color: Colors.black.withOpacity(0.08),
+                    )
+                  ],
                 ),
-              );
-            },
+
+                child: Column(
+                  children: [
+
+                    Icon(
+                      Icons.support_agent,
+                      size: 60,
+                      color: Colors.blue.shade400,
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    Text(
+                      "Trung tâm hỗ trợ",
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: isDark
+                            ? Colors.white
+                            : Colors.black87,
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    Text(
+                      "Liên hệ nhân viên hỗ trợ khi gặp vấn đề với ứng dụng hoặc lịch uống thuốc.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 15,
+                        height: 1.5,
+                        color: isDark
+                            ? Colors.white70
+                            : Colors.black54,
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    SizedBox(
+                      width: double.infinity,
+                      height: 55,
+
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
+
+                        icon: const Icon(Icons.chat_bubble_outline),
+
+                        label: const Text(
+                          "Chat với nhân viên",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                              const SupportChatScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),

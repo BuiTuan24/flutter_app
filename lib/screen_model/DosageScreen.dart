@@ -190,32 +190,6 @@ class _DosageScreenState extends State<DosageScreen> {
     print("BODY: ${res.body}");
 
     if (res.statusCode == 200 || res.statusCode == 201) {
-      for (int i = 0; i < times.length; i++) {
-
-        try {
-
-          await NotificationService
-              .scheduleMedicineNotification(
-
-            id: DateTime.now()
-                .millisecondsSinceEpoch
-                .remainder(100000) + i,
-
-            medicineName:
-            nameController.text,
-
-            dosage:
-            dosageController.text,
-
-            time:
-            formatTime(times[i]),
-          );
-
-        } catch (e) {
-
-          print(e);
-        }
-      }
       Navigator.pop(context);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -232,9 +206,39 @@ class _DosageScreenState extends State<DosageScreen> {
             ? "Thêm thuốc"
             : "Chỉnh sửa thuốc"),
       ),
-      body: Padding(
+        body: Container(
+            decoration: BoxDecoration(
+              image: DecorationImage(
+                image: AssetImage(
+                  "assets/images/image1.png",
+                ),
+                fit: BoxFit.cover,
+              ),
+            ),
+
+            child: Container(
+              color: Theme.of(context).brightness
+                  == Brightness.dark
+                  ? Colors.black.withOpacity(0.45)
+                  : Colors.white.withOpacity(0.15),
+              child: Padding(
         padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
+                child: Center(
+                  child: Container(
+
+                    padding: const EdgeInsets.all(20),
+
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.12),
+
+                      borderRadius: BorderRadius.circular(24),
+
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.2),
+                      ),
+                    ),
+
+                    child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -404,7 +408,11 @@ class _DosageScreenState extends State<DosageScreen> {
             ],
           ),
         ),
-      ),
+                  ),
+                ),
+              ),
+            ),
+        )
     );
   }
 }

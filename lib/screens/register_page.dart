@@ -8,47 +8,55 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 
-  
   @override
   State<RegisterPage> createState() => _RegisterPageState();
 }
 
 class _RegisterPageState extends State<RegisterPage> {
+  final _formKey = GlobalKey<FormState>();
+
   final fullNameController = TextEditingController();
   final phoneController = TextEditingController();
   final emailController = TextEditingController();
   final passController = TextEditingController();
+  final confirmPassController = TextEditingController();
+
   DateTime? selectedDate;
   String gender = "male";
 
-  void submit() {
-  if (selectedDate == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Vui lòng chọn ngày sinh")),
-    );
-    return;
-  }
+  bool obscurePass = true;
+  bool obscureConfirmPass = true;
 
-  context.read<AuthBloc>().add(
-    RegisterSubmitted(
-      fullName: fullNameController.text,
-      phone: phoneController.text,
-      email: emailController.text,
-      password: passController.text,
-      birthYear: selectedDate!.year, // ✅ FIX
-      gender: gender,
-      avatar: "",
-    ),
-  );
-}
+  void submit() {
+    if (!_formKey.currentState!.validate()) return;
+
+    if (selectedDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Vui lòng chọn ngày sinh")),
+      );
+      return;
+    }
+
+    context.read<AuthBloc>().add(
+      RegisterSubmitted(
+        fullName: fullNameController.text,
+        phone: phoneController.text,
+        email: emailController.text,
+        password: passController.text,
+        birthYear: selectedDate!.year,
+        gender: gender,
+        avatar: "",
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Đăng ký")),
+      appBar: AppBar(title: const Text("Đăng ký")),
       body: Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
+        padding: const EdgeInsets.all(16),
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [
               Color.fromARGB(255, 243, 244, 247),
@@ -60,8 +68,8 @@ class _RegisterPageState extends State<RegisterPage> {
         ),
         child: BlocListener<AuthBloc, AuthState>(
           listener: (context, state) {
-            if (state is AuthSuccess) {
-              Navigator.push(
+            if (state is AuthSuccess && mounted) {
+              Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
                   builder: (_) => SuccessPage(),
@@ -73,95 +81,223 @@ class _RegisterPageState extends State<RegisterPage> {
               );
             }
           },
-          child: Column(
-            children: [
-              TextField(
-                controller: fullNameController,
-                decoration: InputDecoration(labelText: "Họ tên"),
-              ),
-              TextField(
-                controller: phoneController,
-                decoration: InputDecoration(labelText: "SĐT"),
-              ),
-              TextField(
-                controller: emailController,
-                decoration: InputDecoration(labelText: "Email"),
-              ),
-              TextField(
-                controller: passController,
-                obscureText: true,
-                decoration: InputDecoration(labelText: "Mật khẩu"),
-              ),
-            SizedBox(height: 10),
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              children: [
+                const SizedBox(height: 10),
 
-              ElevatedButton(
-                onPressed: () async {
-                  DateTime? picked = await showDatePicker(
-                    context: context,
-                    initialDate: DateTime(2000),
-                    firstDate: DateTime(1950),
-                    lastDate: DateTime.now(),
-                  );
-
-                  if (picked != null) {
-                    setState(() {
-                      selectedDate = picked;
-                    });
-                  }
-                },
-                child: Text(
-                  selectedDate == null
-                      ? "Chọn ngày sinh"
-                      : "${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}",
+                _buildInput(
+                  context: context,
+                  controller: fullNameController,
+                  label: "Họ tên",
+                  validator: (v) =>
+                  v == null || v.isEmpty ? "Nhập họ tên" : null,
                 ),
-              ),
-              SizedBox(height: 10),
 
-              /// ✅ Label + Dropdown
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Chọn giới tính",
-                  style: TextStyle(color: const Color.fromARGB(255, 12, 12, 12), fontSize: 16),
+                _buildInput(
+                  context: context,
+                  controller: phoneController,
+                  label: "SĐT",
+                  keyboard: TextInputType.phone,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return "Nhập SĐT";
+                    if (!RegExp(r'^[0-9]{9,11}$').hasMatch(v)) {
+                      return "SĐT không hợp lệ";
+                    }
+                    return null;
+                  },
                 ),
-              ),
 
-              DropdownButton<String>(
-                value: gender,
-                isExpanded: true,
-                items: ["male", "female", "other"]
-                    .map((g) => DropdownMenuItem(
-                          value: g,
-                          child: Text(g),
-                        ))
-                    .toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() {
-                      gender = value;
-                    });
-                  }
-                },
-              ),
+                _buildInput(
+                  context: context,
+                  controller: emailController,
+                  label: "Email",
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return "Nhập email";
+                    if (!v.contains("@")) return "Email không hợp lệ";
+                    return null;
+                  },
+                ),
 
-              SizedBox(height: 20),
-
-              BlocBuilder<AuthBloc, AuthState>(
-                builder: (context, state) {
-                  if (state is AuthLoading) {
-                    return CircularProgressIndicator();
-                  }
-
-                  return ElevatedButton(
-                    onPressed: submit,
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: Size(double.infinity, 50),
+                _buildInput(
+                  context: context,
+                  controller: passController,
+                  label: "Mật khẩu",
+                  obscure: obscurePass,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscurePass
+                          ? Icons.visibility_off
+                          : Icons.visibility,
                     ),
-                    child: Text("Đăng ký"),
-                  );
-                },
-              ),
-            ],
+                    onPressed: () {
+                      setState(() {
+                        obscurePass = !obscurePass;
+                      });
+                    },
+                  ),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return "Nhập mật khẩu";
+                    if (v.length < 6) return "Mật khẩu ≥ 6 ký tự";
+                    return null;
+                  },
+                ),
+
+                _buildInput(
+                  context: context,
+                  controller: confirmPassController,
+                  label: "Nhập lại mật khẩu",
+                  obscure: obscureConfirmPass,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscureConfirmPass
+                          ? Icons.visibility_off
+                          : Icons.visibility,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        obscureConfirmPass = !obscureConfirmPass;
+                      });
+                    },
+                  ),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) {
+                      return "Nhập lại mật khẩu";
+                    }
+                    if (v != passController.text) {
+                      return "Mật khẩu không khớp";
+                    }
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 15),
+
+                ElevatedButton(
+                  onPressed: () async {
+                    DateTime? picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime(2000),
+                      firstDate: DateTime(1950),
+                      lastDate: DateTime.now(),
+                    );
+
+                    if (picked != null) {
+                      setState(() => selectedDate = picked);
+                    }
+                  },
+                  child: Text(
+                    selectedDate == null
+                        ? "Chọn ngày sinh"
+                        : "${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}",
+                  ),
+                ),
+
+                const SizedBox(height: 15),
+
+                Text("Giới tính"),
+
+                DropdownButton<String>(
+                  value: gender,
+                  isExpanded: true,
+                  items: ["male", "female", "other"]
+                      .map((g) => DropdownMenuItem(
+                    value: g,
+                    child: Text(g),
+                  ))
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => gender = value);
+                    }
+                  },
+                ),
+
+                const SizedBox(height: 20),
+
+                BlocBuilder<AuthBloc, AuthState>(
+                  builder: (context, state) {
+                    if (state is AuthLoading) {
+                      return const Center(
+                        child: CircularProgressIndicator(),
+                      );
+                    }
+
+                    return ElevatedButton(
+                      onPressed: submit,
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text("Đăng ký"),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInput({
+    required BuildContext context,
+    required TextEditingController controller,
+    required String label,
+    required String? Function(String?) validator,
+    bool obscure = false,
+    TextInputType keyboard = TextInputType.text,
+    Widget? suffixIcon,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextFormField(
+        controller: controller,
+        validator: validator,
+        obscureText: obscure,
+        keyboardType: keyboard,
+        style: TextStyle(
+          color: Theme.of(context).textTheme.bodyLarge?.color,
+        ),
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: Theme.of(context).colorScheme.surface.withOpacity(0.85),
+
+          labelText: label,
+          labelStyle: TextStyle(
+            color: Theme.of(context).textTheme.bodyMedium?.color,
+          ),
+
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+
+          suffixIcon: suffixIcon,
+
+          errorStyle: const TextStyle(
+            color: Colors.redAccent,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(
+              color: Colors.redAccent,
+              width: 1.5,
+            ),
+          ),
+
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(
+              color: Colors.redAccent,
+              width: 2,
+            ),
           ),
         ),
       ),
@@ -170,42 +306,34 @@ class _RegisterPageState extends State<RegisterPage> {
 }
 
 class SuccessPage extends StatelessWidget {
-  const SuccessPage({super.key});
+  SuccessPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Thành công")),
+      appBar: AppBar(title: const Text("Thành công")),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.check_circle,
-              color: Colors.green,
-              size: 80,
-            ),
-            SizedBox(height: 20),
-            Text(
+            const Icon(Icons.check_circle, color: Colors.green, size: 80),
+            const SizedBox(height: 20),
+            const Text(
               "Đăng ký thành công!",
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
-            SizedBox(height: 30),
+            const SizedBox(height: 30),
             ElevatedButton(
               onPressed: () {
-                /// quay về trang login
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(
                     builder: (_) => LoginPage(),
                   ),
-                  (route) => false,
+                      (route) => false,
                 );
               },
-              child: Text("Hoàn thành"),
+              child: const Text("Hoàn thành"),
             ),
           ],
         ),

@@ -21,16 +21,18 @@ class NotificationService {
       android: android,
     );
 
-// 🔔 xin quyền notification
+    // 🔔 xin quyền notification
     await notifications
         .resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
+
     await notifications
         .resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>()
         ?.requestExactAlarmsPermission();
-// 🌏 timezone VN
+
+    // 🌏 timezone VN
     tz.initializeTimeZones();
 
     tz.setLocalLocation(
@@ -43,56 +45,76 @@ class NotificationService {
 
         if (response.actionId == 'stop') {
           await notifications.cancelAll();
+
           print("Đã tắt alarm loop");
         }
       },
     );
   }
-  static Future<void> startAlarmLoop({
-    required int baseId,
-    required String medicineName,
-    required String dosage,
-  }) async {
 
-    const int durationSeconds = 300; // 5 phút
-    const int intervalSeconds = 10;
+  // 🔥 schedule toàn bộ thuốc
+  static Future<void> scheduleAllMedicines(
+      List medications,
+      ) async {
 
-    final int count = (durationSeconds / intervalSeconds).ceil();
+    // 🔥 clear trước khi schedule mới
+    await notifications.cancelAll();
 
-    for (int i = 0; i < count; i++) {
+    for (final med in medications) {
 
-      await Future.wait(
-        List.generate(count, (i) {
-          return notifications.zonedSchedule(
-            baseId + i,
-            "💊 Đến giờ uống thuốc",
-            "$medicineName - $dosage (bấm Tắt để dừng)",
+      // 🔥 parse times
+      List<String> times = [];
 
-            tz.TZDateTime.now(tz.local)
-                .add(Duration(seconds: i * intervalSeconds)),
+      if (med['times'] is List) {
 
-            const NotificationDetails(
-              android: AndroidNotificationDetails(
-                'medicine_channel',
-                'Medicine Reminder',
-                channelDescription: 'Alarm thuốc',
-                importance: Importance.max,
-                priority: Priority.high,
-                playSound: true,
-                enableVibration: true,
-              ),
-            ),
+        times = List<String>.from(med['times']);
 
-            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-            uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-          );
-        }),
-      );
+      } else {
+
+        times = med['times']
+            .toString()
+            .replaceAll('[', '')
+            .replaceAll(']', '')
+            .replaceAll('"', '')
+            .split(',');
+      }
+
+      // 🔥 weekday check
+      if (med['scheduleType'] == "WEEKLY") {
+
+        final today = DateTime.now().weekday;
+
+        List weekdays = med['weekdays'] is String
+            ? med['weekdays']
+            .replaceAll('[', '')
+            .replaceAll(']', '')
+            .split(',')
+            .map((e) => int.parse(e.trim()))
+            .toList()
+            : med['weekdays'];
+
+        if (!weekdays.contains(today)) {
+          continue;
+        }
+      }
+
+      // 🔥 schedule từng time
+      for (int i = 0; i < times.length; i++) {
+
+        await scheduleMedicineNotification(
+
+          // 🔥 ID cố định tránh duplicate
+          id: med['id'] * 100 + i,
+
+          medicineName: med['name'],
+          dosage: med['dosage'],
+
+          time: times[i].trim(),
+        );
+      }
     }
-
-    print("Đã tạo alarm loop: $count lần");
   }
+
   // ⏰ Schedule thuốc
   static Future<void> scheduleMedicineNotification({
 
@@ -103,22 +125,30 @@ class NotificationService {
 
   }) async {
 
-    // ví dụ: 08:30
-    final parts = time.split(":");
+    final cleanTime = time.trim().replaceAll('"', '');
+
+    final parts = cleanTime.split(":");
 
     final int hour = int.parse(parts[0]);
     final int minute = int.parse(parts[1]);
 
     await notifications.zonedSchedule(
+
       id,
+
       "💊 Đến giờ uống thuốc",
+
       "$medicineName - $dosage",
+
       _nextInstance(hour, minute),
 
       NotificationDetails(
         android: AndroidNotificationDetails(
+
           'medicine_channel',
+
           'Medicine Reminder',
+
           channelDescription: 'Thông báo nhắc uống thuốc',
 
           importance: Importance.max,
@@ -127,25 +157,26 @@ class NotificationService {
           playSound: true,
           enableVibration: true,
 
-          // ⭐ QUAN TRỌNG: bật full screen (giống alarm)
           fullScreenIntent: true,
 
-          // ⭐ NÚT ACTION
           actions: <AndroidNotificationAction>[
             AndroidNotificationAction(
-              'stop',   // actionId
-              'Tắt',     // text hiển thị
+              'stop',
+              'Tắt',
             ),
           ],
         ),
       ),
 
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode:
+      AndroidScheduleMode.exactAllowWhileIdle,
 
       uiLocalNotificationDateInterpretation:
       UILocalNotificationDateInterpretation.absoluteTime,
 
-      matchDateTimeComponents: DateTimeComponents.time,
+      // 🔥 lặp mỗi ngày
+      matchDateTimeComponents:
+      DateTimeComponents.time,
     );
   }
 
@@ -171,7 +202,7 @@ class NotificationService {
       minute,
     );
 
-    // nếu giờ đã qua → +1 ngày
+    // nếu giờ đã qua → ngày mai
     if (scheduled.isBefore(now)) {
 
       scheduled = scheduled.add(
@@ -179,15 +210,75 @@ class NotificationService {
       );
     }
 
-    print("NOW: $now");
-    print("SCHEDULED: $scheduled");
-
     return scheduled;
   }
 
-  // ❌ huỷ toàn bộ
-  static Future<void> stopAlarmLoop(int baseId) async {
+  // 🚨 alarm loop
+  static Future<void> startAlarmLoop({
+
+    required int baseId,
+    required String medicineName,
+    required String dosage,
+
+  }) async {
+
+    const int durationSeconds = 300;
+    const int intervalSeconds = 10;
+
+    final int count =
+    (durationSeconds / intervalSeconds).ceil();
+
+    await Future.wait(
+
+      List.generate(count, (i) {
+
+        return notifications.zonedSchedule(
+
+          baseId + i,
+
+          "💊 Đến giờ uống thuốc",
+
+          "$medicineName - $dosage (bấm Tắt để dừng)",
+
+          tz.TZDateTime.now(tz.local)
+              .add(Duration(
+            seconds: i * intervalSeconds,
+          )),
+
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+
+              'medicine_channel',
+
+              'Medicine Reminder',
+
+              channelDescription: 'Alarm thuốc',
+
+              importance: Importance.max,
+              priority: Priority.high,
+
+              playSound: true,
+              enableVibration: true,
+            ),
+          ),
+
+          androidScheduleMode:
+          AndroidScheduleMode.exactAllowWhileIdle,
+
+          uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+        );
+      }),
+    );
+  }
+
+  // ❌ huỷ loop
+  static Future<void> stopAlarmLoop(
+      int baseId,
+      ) async {
+
     for (int i = 0; i < 60; i++) {
+
       await notifications.cancel(baseId + i);
     }
   }

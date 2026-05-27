@@ -6,6 +6,8 @@ import 'package:flutter_application_1/screens/detail_screen.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_application_1/screens/home_screen.dart';
+
+import '../service/notification_service.dart';
 class LoginPage extends StatelessWidget {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passController = TextEditingController();
@@ -34,9 +36,14 @@ class LoginPage extends StatelessWidget {
             listener: (context, state) async {
 
               if (state is AuthSuccess) {
+
                 final prefs = await SharedPreferences.getInstance();
 
-                prefs.setInt("userId", state.userId);
+                // 🔥 XÓA toàn bộ notification account cũ
+                await NotificationService.notifications.cancelAll();
+
+                // lưu user hiện tại
+                await prefs.setInt("userId", state.userId);
 
                 Navigator.pushAndRemoveUntil(
                   context,

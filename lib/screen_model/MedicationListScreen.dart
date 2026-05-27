@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../service/notification_service.dart';
 import 'DosageScreen.dart';
 
 class MedicationListScreen extends StatefulWidget {
@@ -117,11 +118,13 @@ class _MedicationListScreenState extends State<MedicationListScreen> {
     final time = e["time"];
 
     return Card(
+      color: Theme.of(context).cardColor.withOpacity(0.85),
+      shadowColor: Colors.black26,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
       ),
-      elevation: 3,
+      elevation: 6,
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: isDone ? Colors.green : Colors.blue,
@@ -218,12 +221,21 @@ class _MedicationListScreenState extends State<MedicationListScreen> {
   }
 
   Future<void> fetchMedications() async {
+
     final res = await http.get(
-      Uri.parse("http://10.0.2.2:8080/medications?userId=$userId"),
+      Uri.parse(
+        "http://10.0.2.2:8080/medications?userId=$userId",
+      ),
     );
 
     if (res.statusCode == 200) {
+
       medications = jsonDecode(res.body);
+
+      // 🔥 schedule lại toàn bộ thuốc
+      await NotificationService.scheduleAllMedicines(
+        medications,
+      );
     }
 
     setState(() => isLoading = false);
@@ -334,10 +346,37 @@ class _MedicationListScreenState extends State<MedicationListScreen> {
       }
     }
 
-    return ListView(
+    return Stack(
       children: [
-        buildSection("💊 Chưa uống", pending, false),
-        buildSection("✅ Đã uống", done, true),
+
+        // 🌄 Background image
+        Positioned.fill(
+          child: Opacity(
+            opacity: 0.7, // độ mờ ảnh
+            child: Image.asset(
+              "assets/images/image3.png",
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
+
+        // 🔥 overlay làm dễ nhìn text hơn
+        Positioned.fill(
+          child: Container(
+            color: Theme.of(context)
+                .scaffoldBackgroundColor
+                .withOpacity(0.01),
+          ),
+        ),
+
+        // 📋 content chính
+        ListView(
+          padding: const EdgeInsets.only(bottom: 100),
+          children: [
+            buildSection("💊 Chưa uống", pending, false),
+            buildSection("✅ Đã uống", done, true),
+          ],
+        ),
       ],
     );
   }
